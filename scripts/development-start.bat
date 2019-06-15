@@ -1,0 +1,1 @@
+docker run -it --rm -p 8080:8080 --env-file docker/dev.env -v %cd%:/app -w /app spygo
