@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { Component, useState, useEffect, useContext } from 'react';
 import { BrowserRouter as Router, Route, Link } from 'react-router-dom';
 import styled from 'styled-components';
 
@@ -8,6 +8,7 @@ import MessageBroker from './utils/messageBroker';
 import GlobalStyles from './components/Global';
 import Landing from './pages/Landing';
 import Game from './pages/Game';
+import { Store } from './store';
 
 const Container = styled.div`
   display: flex;
@@ -26,37 +27,60 @@ const Container = styled.div`
 
 interface Props {}
 
-interface State {}
+const App: React.FC<Props> = (props: Props) => {
+  const { state, dispatch } = useContext(Store);
 
-export default class App extends Component<Props, State> {
-  socket: WebSocket | null;
-  gameFunctions: any;
+  const [socket, setSocket] = useState<WebSocket | undefined>();
+  const [gameData, setGameData] = useState({});
 
-  constructor(props: Props) {
-    super(props);
+  const onSocketMessage = (message: any) => {
+    console.log('Message recieved');
+    console.log(message);
+  };
 
-    this.state = {};
-
-    this.socket = null;
-
-    this.createGame = this.createGame.bind(this);
-    this.joinGame = this.joinGame.bind(this);
-    this.setGame = this.setGame.bind(this);
-
-    this.gameFunctions = {
-      createGame: this.createGame,
-      joinGame: this.joinGame,
+  const createGame = (username: string) => {
+    const gameObj = {
+      username: username,
     };
-  }
 
-  componentDidMount() {
-    const socket = new WebSocket(`ws://${process.env.API_URL}/api`);
+    const payload = packMessage('CREATE_GAME', JSON.stringify(gameObj));
+    socket && socket.send(payload);
+  };
 
-    MessageBroker.subscribe('JOIN_GAME', this.setGame);
+  const joinGame = (id: string, username: string) => {
+    const gameObj = {
+      gameId: id || '',
+      username: username,
+    };
+
+    const payload = packMessage('JOIN_GAME', JSON.stringify(gameObj));
+    socket && socket.send(payload);
+  };
+
+  const gameFunctions = {
+    createGame,
+    joinGame,
+  };
+
+  const setGame = (payload: any) => {
+    const { gameId: id, username } = payload.data;
+
+    setGameData({
+      id,
+      username,
+    });
+  };
+
+  useEffect(() => {
+    console.log(state, dispatch);
+    dispatch({ type: 'DO_SOMETHING' });
+
+    const socket = new WebSocket(`ws://${process.env.REACT_APP_API_URL}/api`);
+    setSocket(socket);
+
+    MessageBroker.subscribe('JOIN_GAME', setGame);
 
     socket.onopen = e => {
-      this.socket = socket;
-
       let message = {
         type: 'create-game',
         data: '{"code":"", "username":"user"}',
@@ -77,59 +101,22 @@ export default class App extends Component<Props, State> {
         socket.close();
       };
     };
-  }
+  }, []);
 
-  onSocketMessage(message: any) {
-    console.log('Message recieved');
-    console.log(message);
-  }
+  return (
+    <Router>
+      <Container>
+        <GlobalStyles />
+        <Link to="/game/abc123">This link</Link>
+        <Route
+          exact
+          path="/"
+          render={props => <Landing {...props} gameFunctions={gameFunctions} />}
+        />
+        <Route exact path="/game/:gameid" component={Game} />
+      </Container>
+    </Router>
+  );
+};
 
-  createGame(username: string) {
-    const gameObj = {
-      username: username,
-    };
-
-    const payload = packMessage('CREATE_GAME', JSON.stringify(gameObj));
-    this.socket && this.socket.send(payload);
-  }
-
-  joinGame(id: string, username: string) {
-    const gameObj = {
-      gameId: id || '',
-      username: username,
-    };
-
-    const payload = packMessage('JOIN_GAME', JSON.stringify(gameObj));
-    this.socket && this.socket.send(payload);
-  }
-
-  setGame(payload: any) {
-    const { gameId: id, username } = payload.data;
-
-    this.setState({
-      gameData: {
-        id,
-        username,
-      },
-    });
-  }
-
-  render() {
-    return (
-      <Router>
-        <Container>
-          <GlobalStyles />
-          <Link to="/game/abc123">This link</Link>
-          <Route
-            exact
-            path="/"
-            render={props => (
-              <Landing {...props} gameFunctions={this.gameFunctions} />
-            )}
-          />
-          <Route exact path="/game/:gameid" component={Game} />
-        </Container>
-      </Router>
-    );
-  }
-}
+export default App;
