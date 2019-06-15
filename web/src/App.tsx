@@ -6,8 +6,8 @@ import { packMessage } from './utils/socketUtils';
 import MessageBroker from './utils/messageBroker';
 
 import GlobalStyles from './components/Global';
-import Landing from './Landing';
-import Game from './Game';
+import Landing from './pages/Landing';
+import Game from './pages/Game';
 
 const Container = styled.div`
   display: flex;
