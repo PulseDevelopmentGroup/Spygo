@@ -42,7 +42,7 @@ type (
 )
 
 var (
-	gameIds = make(map[string]bson.ObjectId) //Map the game's code to it's id
+	gameIds   = make(map[string]bson.ObjectId) //Map the game's code to it's id
 	gameCodes = make(map[bson.ObjectId]string) //Map the game's id to it's code
 )
 
@@ -104,13 +104,7 @@ func (dbConn *DatabaseConnection) delGame(id bson.ObjectId) error {
 	if err != nil {
 		return err
 	}
-	
-	if len(game.Players) > 0 {
-		for _, p := range game.Players {
-			dbConn.PlayerCollection.RemoveId(p)
-		}
-	}
-	
+
 	err = dbConn.GameCollection.RemoveId(id)
 	if err != nil {
 		return err

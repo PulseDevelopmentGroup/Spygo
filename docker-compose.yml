@@ -1,0 +1,22 @@
+version: '3'
+services:
+  development:
+    container_name: spygo-dev
+    build:
+      context: ./scripts
+      dockerfile: dev.dockerfile  
+    image: spygo:dev
+    volumes:
+      - .:/app
+    ports:
+      - 8080:8080
+    environment:
+      DB_HOST: 192.168.150.30
+      DB_PORT: 32768
+      DB_NAME: spyfall
+      DB_GAME_COLLECTION: games
+      DB_PLAYER_COLLECTION: players
+      DB_LOC_COLLECTION: locations
+      HTTP_PORT: 8080
+    stdin_open: true
+    tty: true

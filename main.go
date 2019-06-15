@@ -79,9 +79,9 @@ func main() {
 	})
 	if err != nil {
 		fmt.Println(err)
-		fmt.Println("Unable to contact database. Shutting down.")
+		fmt.Println("Unable to connect to database. Shutting down.")
 	}
-	fmt.Println("Connected Sucessfully")
+	fmt.Println("Sucessfully connected to database.")
 
 	http.Handle("/", http.FileServer(http.Dir(cfg.HTTPDir)))
 	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,7 @@ func main() {
 
 		s.addRoute("createGame", createGame)
 
-		s.addRoute("destroyGame", destroyGame)
+		//s.addRoute("destroyGame", destroyGame)
 
 		s.addRoute("joinGame", joinGame)
 
@@ -107,48 +107,42 @@ func main() {
 
 		s.handleRoutes()
 	})
+	fmt.Println("Listening for connections on port: " + cfg.HTTPPort)
 	http.ListenAndServe(":"+cfg.HTTPPort, nil)
 }
 
 func createGame(ctx SocketContext) SocketResponse {
 	username := ctx.Data["username"].(string)
 
-	responseData := ResponseData{
-		Sucess:   true,
-		Username: username,
+	socketResponse := SocketResponse{
+		Type: ctx.Type,
 	}
 
 	if username == "" {
-		responseData.Sucess = false
-		responseData.Error = ResponseError{
+		socketResponse.Error = &ResponseError{
 			Code: errorInvalidUserName,
 			Desc: "The username: \"" + username + "\" is invalid.",
 		}
 
-		return SocketResponse{
-			Type: ctx.Type,
-			Data: responseData,
-		}
+		return socketResponse
 	}
 
 	game, err := dbConn.addGame()
 	if err != nil {
-		responseData.Sucess = false
-		responseData.Error = ResponseError{
+		socketResponse.Error = &ResponseError{
 			Code: errorOther,
 			Desc: err.Error(),
 		}
 
-		return SocketResponse{
-			Type: ctx.Type,
-			Data: responseData,
-		}
+		return socketResponse
 	}
 
 	ctx.Prop["code"] = game.Code
 	return joinGame(ctx)
 }
 
+// To be removed in favor of destroying a game after all players leave
+/*
 func destroyGame(ctx SocketContext) SocketResponse {
 	responseData := ResponseData{Sucess: true}
 	player, err := dbConn.getPlayer(players[ctx.Connection])
@@ -194,105 +188,97 @@ func destroyGame(ctx SocketContext) SocketResponse {
 
 	return leaveGame(ctx)
 }
+*/
 
 func joinGame(ctx SocketContext) SocketResponse {
 	code, ok := ctx.Prop["code"].(string)
 	if !ok {
 		code = ctx.Data["code"].(string)
 	}
-
 	username := ctx.Data["username"].(string)
-	responseData := ResponseData{
-		Sucess:   true,
-		Code:     code,
-		Username: username,
+
+	socketResponse := SocketResponse{
+		Type: ctx.Type,
+		ResponseData: &ResponseData{
+			Code:     code,
+			Username: username,
+		},
 	}
-	
+
 	gid, ok := gameIds[code]
 	if !ok {
-		responseData.Sucess = false
-		responseData.Error = ResponseError{
+		socketResponse.Error = &ResponseError{
 			Code: errorGameNotFound,
 			Desc: "Game '" + code + "' was not found. Is the game code correct?",
 		}
+
+		return socketResponse
 	}
 
 	player, err := dbConn.addPlayer(username, gid)
 	if err != nil {
-		responseData.Sucess = false
-
 		switch err.Error() {
 		case errorGameInProgress:
-			responseData.Error = ResponseError{
+			socketResponse.Error = &ResponseError{
 				Code: err.Error(),
 				Desc: "Cannot join a game that is currently in progress.",
 			}
 		case errorUsernameExists:
-			responseData.Error = ResponseError{
+			socketResponse.Error = &ResponseError{
 				Code: err.Error(),
 				Desc: "Player with the username: " + username + " already exists in game: " + code + ".",
 			}
 		default:
-			responseData.Error = ResponseError{
+			socketResponse.Error = &ResponseError{
 				Code: errorOther,
 				Desc: err.Error(),
 			}
 		}
-		return SocketResponse{
-			Type: ctx.Type,
-			Data: responseData,
-		}
+		return socketResponse
 	}
+
+	//Broadcast to all players that a player has joined
 
 	connectedPlayers[gid] = append(connectedPlayers[gid], ctx.Connection)
 	connections[player.ID] = ctx.Connection
 	players[ctx.Connection] = player.ID
 
-	return SocketResponse{
-		Type: ctx.Type,
-		Data: responseData,
-	}
+	return socketResponse
 }
 
 func leaveGame(ctx SocketContext) SocketResponse {
-	responseData := ResponseData{Sucess: true}
+	socketResponse := SocketResponse{
+		Type: ctx.Type,
+	}
+
 	player, err := dbConn.getPlayer(players[ctx.Connection])
 	if err != nil {
-		responseData.Sucess = false
-		responseData.Error = ResponseError{
+		socketResponse.Error = &ResponseError{
 			Code: errorOther,
 			Desc: err.Error(),
 		}
-		return SocketResponse{
-			Type: ctx.Type,
-			Data: responseData,
-		}
+		return socketResponse
 	}
 
-	responseData.Code = gameCodes[player.Game]
-	responseData.Username = player.Username
+	socketResponse.ResponseData = &ResponseData{
+		Code:     gameCodes[player.Game],
+		Username: player.Username,
+	}
 
 	err = dbConn.delPlayer(player.ID)
 	if err != nil {
-		responseData.Sucess = false
-		responseData.Error = ResponseError{
+		socketResponse.Error = &ResponseError{
 			Code: errorOther,
 			Desc: err.Error(),
 		}
 
-		return SocketResponse{
-			Type: ctx.Type,
-			Data: responseData,
-		}
+		return socketResponse
 	}
 
 	delete(connections, player.ID) //TODO: Add a function here to inform the connected websockets which are in this game that a player disconnected
 	delete(players, ctx.Connection)
 
-	return SocketResponse{
-		Type: ctx.Type,
-		Data: responseData,
-	}
+	return socketResponse
 }
 
 func startGame(ctx SocketContext) SocketResponse {
